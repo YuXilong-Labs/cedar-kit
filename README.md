@@ -4,11 +4,11 @@
 
 ## CocoaPods
 
-在 [Releases](https://github.com/YuXilong-Labs/Lookinside/releases) 选择版本，把对应 podspec URL 放入 Podfile：
+在 [Releases](https://github.com/YuXilong-Labs/cedar-kit/releases) 选择版本，把对应 podspec URL 放入 Podfile：
 
 ```ruby
 pod 'LookInsideServer',
-    :podspec => 'https://github.com/YuXilong-Labs/Lookinside/releases/download/1.0.1-special.1/LookInsideServer.podspec',
+    :podspec => 'https://github.com/YuXilong-Labs/cedar-kit/releases/download/1.0.1-special.2/LookInsideServer.podspec',
     :configurations => ['Debug']
 ```
 
