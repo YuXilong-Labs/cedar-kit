@@ -1,4 +1,4 @@
-# LookInsideServer — 本地 CA 构建
+# LookInsideServer — special CA 构建
 
 自动跟踪 [LookInsideApp/LookInside-Release](https://github.com/LookInsideApp/LookInside-Release/releases/latest)，将 Server 内置根证书与 SHA-256 pin 替换为本仓库公开测试 CA，并发布 CocoaPods 可用的 XCFramework。保留原有证书链与挑战签名验证逻辑，不把私钥放进仓库或 Actions。
 
@@ -8,7 +8,7 @@
 
 ```ruby
 pod 'LookInsideServer',
-    :podspec => 'https://github.com/YuXilong-Labs/Lookinside/releases/download/1.0.1-local.1/LookInsideServer.podspec',
+    :podspec => 'https://github.com/YuXilong-Labs/Lookinside/releases/download/1.0.1-special.1/LookInsideServer.podspec',
     :configurations => ['Debug']
 ```
 
@@ -22,7 +22,7 @@ Server 的根仅信任相应测试 CA；客户端仍须拥有该 CA 签发的证
 
 1. 运行失败场景单元测试。
 2. 从 GitHub API 获取上游最新稳定 Release，验证 asset 名称、URL 与 API 提供的 SHA-256。
-3. 若 `<上游版本>-local.<patch_revision>` 已发布则跳过；未完成的草稿可重试。
+3. 若 `<上游版本>-special.<patch_revision>` 已发布则跳过；未完成的草稿可重试。
 4. macOS runner 解压 XCFramework，对每个架构用 `nm` 定位 `_kLKSRootCertDER`、`_kLKSRootCertDERLength`，经 Mach-O segment 映射得到文件偏移。
 5. 验证旧 DER 摘要与配置一致，确认旧 pin 唯一、新 DER 不超过槽位，再替换 DER、长度、pin。其余字节必须保持一致。
 6. 每个 framework 执行 ad-hoc codesign，再验证签名及全部架构中的根证书、长度、摘要。
@@ -34,15 +34,15 @@ Server 的根仅信任相应测试 CA；客户端仍须拥有该 CA 签发的证
 
 ## CA 与升级
 
-`certs/local-root.der` 是当前本地服务的公开根证书，SHA-256：
+`certs/special-root.der` 是当前配套服务的公开根证书，SHA-256：
 
 ```text
 d16af470704aeddf4d348993420766e3d391e6480c6f28397117d00d9538688a
 ```
 
-`config.json` 固定已审查的上游根摘要和本地根摘要。变更本地 CA 或补丁算法后，递增 `patch_revision` 并手动运行 Actions，生成新版本；不会覆盖已公开 Release。原 CA 私钥仍由本地签发服务单独保管。
+`config.json` 固定已审查的上游根摘要和special 根摘要。变更special CA 或补丁算法后，递增 `patch_revision` 并手动运行 Actions，生成新版本；不会覆盖已公开 Release。原 CA 私钥仍由配套签发服务单独保管。
 
-本地复现（macOS，Python 3.12+、Xcode Command Line Tools、GitHub CLI、CocoaPods）：
+构建复现（macOS，Python 3.12+、Xcode Command Line Tools、GitHub CLI、CocoaPods）：
 
 ```sh
 python3 -m unittest discover -s tests -v
@@ -53,6 +53,6 @@ pod ipc spec build/release/LookInsideServer.podspec
 
 使用全新 `build/` 目录重跑构建，避免误用旧输入。下载与签名校验报告位于 `build/release/manifest.json`。
 
-上游 podspec 将 Server 标注为 MIT，并保留 LookInside 作者信息；本仓库不重新授予第三方二进制的权利。仅用于本地开发测试。
+上游 podspec 将 Server 标注为 MIT，并保留 LookInside 作者信息；本仓库不重新授予第三方二进制的权利。仅用于开发测试。
 
 参考：[CocoaPods podspec source](https://guides.cocoapods.org/syntax/podspec.html#source)、[Podfile 外部 podspec](https://guides.cocoapods.org/syntax/podfile.html#pod)、[Actions 定时触发](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)。

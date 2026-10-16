@@ -92,7 +92,7 @@ class PatchTests(unittest.TestCase):
             slices(image)
 
     def test_release_tag_validation(self):
-        self.assertEqual(release_version("v1.2.3", 2), "1.2.3-local.2")
+        self.assertEqual(release_version("v1.2.3", 2), "1.2.3-special.2")
         for tag in ["../escape", "1.2.3; echo secret", "1.2.3-rc1"]:
             with self.assertRaises(ValueError):
                 release_version(tag, 1)
