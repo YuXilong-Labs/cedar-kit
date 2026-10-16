@@ -1,0 +1,6 @@
+build/
+__pycache__/
+.ruff_cache/
+*.key
+*.p12
+.DS_Store

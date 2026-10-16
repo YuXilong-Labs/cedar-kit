@@ -1,0 +1,7 @@
+{
+  "upstream": "LookInsideApp/LookInside-Release",
+  "repository": "YuXilong-Labs/Lookinside",
+  "patch_revision": 1,
+  "upstream_root_sha256": "7ca2d48f7de4985ed0b5a7ce48aa76e1bc1f550aa4345c1e709ec0bd51b3e483",
+  "local_root_sha256": "d16af470704aeddf4d348993420766e3d391e6480c6f28397117d00d9538688a"
+}
