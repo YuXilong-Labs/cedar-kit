@@ -11,7 +11,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from patch import file_offset, patch_image, sha256, slices
-from release import release_version, validate_archive
+from release import prune_unsupported_libraries, release_version, validate_archive
 
 
 class PatchTests(unittest.TestCase):
@@ -96,6 +96,31 @@ class PatchTests(unittest.TestCase):
         for tag in ["../escape", "1.2.3; echo secret", "1.2.3-rc1"]:
             with self.assertRaises(ValueError):
                 release_version(tag, 1)
+
+    def test_unsupported_platforms_are_removed(self):
+        scratch = Path(__file__).resolve().parents[1] / "build/tests"
+        scratch.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch) as directory:
+            framework = Path(directory)
+            libraries = []
+            for platform in ["ios", "watchos", "tvos", "macos"]:
+                identifier = f"{platform}-arm64"
+                (framework / identifier).mkdir()
+                libraries.append(
+                    {
+                        "LibraryIdentifier": identifier,
+                        "SupportedPlatform": platform,
+                    }
+                )
+
+            retained = prune_unsupported_libraries(framework, libraries)
+
+            self.assertEqual(
+                [library["SupportedPlatform"] for library in retained],
+                ["ios", "macos"],
+            )
+            self.assertFalse((framework / "watchos-arm64").exists())
+            self.assertFalse((framework / "tvos-arm64").exists())
 
     def test_archive_traversal_rejected(self):
         scratch = Path(__file__).resolve().parents[1] / "build/tests"

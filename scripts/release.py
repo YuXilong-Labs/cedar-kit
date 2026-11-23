@@ -9,6 +9,7 @@ from pathlib import Path
 import plistlib
 import posixpath
 import re
+import shutil
 import stat
 import subprocess
 import zipfile
@@ -18,6 +19,7 @@ from patch import patch_binary, require, sha256, verify_binary
 BASE = Path(__file__).resolve().parents[1]
 BUILD = BASE / "build"
 ASSET = "LookInsideServer.xcframework.zip"
+SUPPORTED_PLATFORMS = {"ios", "macos"}
 
 
 def run(*args, **kwargs):
@@ -121,6 +123,24 @@ def validate_archive(archive):
                 )
 
 
+def prune_unsupported_libraries(framework, libraries):
+    retained = []
+    for library in libraries:
+        if library["SupportedPlatform"] in SUPPORTED_PLATFORMS:
+            retained.append(library)
+            continue
+        identifier = library["LibraryIdentifier"]
+        require(Path(identifier).parts == (identifier,), "Invalid library identifier")
+        directory = framework / identifier
+        require(
+            directory.is_dir() and not directory.is_symlink(),
+            "Invalid library directory",
+        )
+        shutil.rmtree(directory)
+    require(retained, "No supported platform slices")
+    return retained
+
+
 def podspec(metadata, digest):
     version = metadata["version"]
     repository = metadata["repository"]
@@ -200,18 +220,18 @@ def build(config):
     )
     run("ditto", "-x", "-k", str(archive), str(unpacked))
     framework = unpacked / "LookInsideServer.xcframework"
-    info = plistlib.loads((framework / "Info.plist").read_bytes())
-    libraries = info["AvailableLibraries"]
-    require(libraries, "Empty XCFramework")
+    info_path = framework / "Info.plist"
+    info = plistlib.loads(info_path.read_bytes())
+    require(info["AvailableLibraries"], "Empty XCFramework")
+    libraries = prune_unsupported_libraries(framework, info["AvailableLibraries"])
+    info["AvailableLibraries"] = libraries
+    info_path.write_bytes(plistlib.dumps(info))
     report = {**metadata, "root_sha256": sha256(root), "libraries": []}
     seen = set()
     for library in libraries:
         identifier = library["LibraryIdentifier"]
         require(identifier not in seen, "Duplicate library identifier")
         seen.add(identifier)
-        require(
-            library["SupportedPlatform"] in {"ios", "macos"}, "Unsupported platform"
-        )
         bundle = (framework / identifier / library["LibraryPath"]).resolve()
         require(
             bundle.is_relative_to(framework.resolve()), "Framework path escapes archive"
@@ -255,7 +275,8 @@ def build(config):
     (BUILD / "release-notes.md").write_text(
         f"Upstream: [{metadata['upstream_tag']}]({metadata['upstream_url']})\n\n"
         f"Special test CA SHA-256: `{sha256(root)}`\n\n"
-        "All supplied slices patched and ad-hoc signed. No CA private key included. "
+        "All included iOS and macOS slices patched and ad-hoc signed. "
+        "No CA private key included. "
         "Original signature identity is not preserved. Use only in test projects.\n\n"
         "```ruby\n"
         "pod 'LookInsideServer', :podspec => "
