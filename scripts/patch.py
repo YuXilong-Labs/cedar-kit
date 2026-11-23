@@ -24,13 +24,14 @@ def slices(data):
         (0x200000C, 1): "arm64_32",
         (0x1000007, 3): "x86_64",
     }
-    if data[:4] in {bytes.fromhex("cffaedfe"), bytes.fromhex("cefaedfe")}:
+    magic = bytes(data[:4])
+    if magic in {bytes.fromhex("cffaedfe"), bytes.fromhex("cefaedfe")}:
         require(len(data) >= 32, "Invalid slice bounds")
         cpu, subtype = struct.unpack_from("<II", data, 4)
         arch = architectures.get((cpu, subtype & 0xFFFFFF))
         require(arch is not None, "Unsupported architecture")
         return [(arch, 0, len(data))]
-    require(data[:4] == bytes.fromhex("cafebabe"), "Unsupported Mach-O format")
+    require(magic == bytes.fromhex("cafebabe"), "Unsupported Mach-O format")
     count = struct.unpack_from(">I", data, 4)[0]
     require(0 < count <= 16, "Invalid slice count")
     result = []
@@ -60,7 +61,7 @@ def file_offset(image, address, length):
     layout = {
         bytes.fromhex("cffaedfe"): (32, 0x19, 72, "<QQQQ"),
         bytes.fromhex("cefaedfe"): (28, 0x1, 56, "<IIII"),
-    }.get(image[:4])
+    }.get(bytes(image[:4]))
     require(layout is not None, "Expected little-endian Mach-O")
     header_size, segment_command, segment_size, segment_format = layout
     count, commands_size = struct.unpack_from("<II", image, 16)
