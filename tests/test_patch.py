@@ -11,7 +11,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from patch import file_offset, patch_image, sha256, slices
-from release import prune_unsupported_libraries, release_version, validate_archive
+from release import release_version, validate_archive
 
 
 class PatchTests(unittest.TestCase):
@@ -91,36 +91,30 @@ class PatchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bounds"):
             slices(image)
 
+    def test_arm64_32_slice_and_segment_mapping(self):
+        thin = bytearray(64)
+        thin[:4] = bytes.fromhex("cffaedfe")
+        struct.pack_into("<II", thin, 4, 0x100000C, 0)
+        self.assertEqual(slices(thin), [("arm64", 0, 64)])
+
+        fat = bytearray(96)
+        fat[:4] = bytes.fromhex("cafebabe")
+        struct.pack_into(">I", fat, 4, 1)
+        struct.pack_into(">IIIII", fat, 8, 0x200000C, 1, 32, 64, 5)
+        self.assertEqual(slices(fat), [("arm64_32", 32, 64)])
+
+        image = bytearray(160)
+        image[:4] = bytes.fromhex("cefaedfe")
+        struct.pack_into("<II", image, 16, 1, 56)
+        struct.pack_into("<II", image, 28, 0x1, 56)
+        struct.pack_into("<IIII", image, 52, 0x1000, 160, 0, 160)
+        self.assertEqual(file_offset(image, 0x1080, 8), 128)
+
     def test_release_tag_validation(self):
         self.assertEqual(release_version("v1.2.3", 2), "1.2.3-special.2")
         for tag in ["../escape", "1.2.3; echo secret", "1.2.3-rc1"]:
             with self.assertRaises(ValueError):
                 release_version(tag, 1)
-
-    def test_unsupported_platforms_are_removed(self):
-        scratch = Path(__file__).resolve().parents[1] / "build/tests"
-        scratch.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=scratch) as directory:
-            framework = Path(directory)
-            libraries = []
-            for platform in ["ios", "watchos", "tvos", "macos"]:
-                identifier = f"{platform}-arm64"
-                (framework / identifier).mkdir()
-                libraries.append(
-                    {
-                        "LibraryIdentifier": identifier,
-                        "SupportedPlatform": platform,
-                    }
-                )
-
-            retained = prune_unsupported_libraries(framework, libraries)
-
-            self.assertEqual(
-                [library["SupportedPlatform"] for library in retained],
-                ["ios", "macos"],
-            )
-            self.assertFalse((framework / "watchos-arm64").exists())
-            self.assertFalse((framework / "tvos-arm64").exists())
 
     def test_archive_traversal_rejected(self):
         scratch = Path(__file__).resolve().parents[1] / "build/tests"

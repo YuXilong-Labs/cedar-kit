@@ -12,7 +12,7 @@ pod 'LookInsideServer',
     :configurations => ['Debug']
 ```
 
-执行 `pod install`。删除同名官方依赖，避免重复链接。podspec 直接从本仓库 Release 下载 ZIP，并校验 SHA-256；无需 CocoaPods trunk 账号或私有 Specs 源。支持 iOS 15+、macOS 14+，包中保留真机、模拟器、Catalyst、macOS 切片。此仓库不把大二进制提交到 Git，因此不要使用 `:git` 集成。
+执行 `pod install`。删除同名官方依赖，避免重复链接。podspec 直接从本仓库 Release 下载 ZIP，并校验 SHA-256；无需 CocoaPods trunk 账号或私有 Specs 源。支持 iOS 15+、macOS 14+、tvOS 15+、watchOS 10+，完整保留上游提供的真机、模拟器和 Catalyst 切片。此仓库不把大二进制提交到 Git，因此不要使用 `:git` 集成。
 
 Server 的根仅信任相应测试 CA；客户端仍须拥有该 CA 签发的证书以及匹配的私钥。仓库没有实现签发服务、客户端接口重定向或官方许可证激活。修改过的 framework 使用 ad-hoc 代码签名，嵌入真机 App 时由工程重新签名；不保留官方 Team ID，不能假设通过原生 Injector 的团队签名检查。
 

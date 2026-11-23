@@ -9,7 +9,6 @@ from pathlib import Path
 import plistlib
 import posixpath
 import re
-import shutil
 import stat
 import subprocess
 import zipfile
@@ -19,7 +18,7 @@ from patch import patch_binary, require, sha256, verify_binary
 BASE = Path(__file__).resolve().parents[1]
 BUILD = BASE / "build"
 ASSET = "LookInsideServer.xcframework.zip"
-SUPPORTED_PLATFORMS = {"ios", "macos"}
+SUPPORTED_PLATFORMS = {"ios", "macos", "tvos", "watchos"}
 
 
 def run(*args, **kwargs):
@@ -123,24 +122,6 @@ def validate_archive(archive):
                 )
 
 
-def prune_unsupported_libraries(framework, libraries):
-    retained = []
-    for library in libraries:
-        if library["SupportedPlatform"] in SUPPORTED_PLATFORMS:
-            retained.append(library)
-            continue
-        identifier = library["LibraryIdentifier"]
-        require(Path(identifier).parts == (identifier,), "Invalid library identifier")
-        directory = framework / identifier
-        require(
-            directory.is_dir() and not directory.is_symlink(),
-            "Invalid library directory",
-        )
-        shutil.rmtree(directory)
-    require(retained, "No supported platform slices")
-    return retained
-
-
 def podspec(metadata, digest):
     version = metadata["version"]
     repository = metadata["repository"]
@@ -157,6 +138,8 @@ Pod::Spec.new do |s|
                :sha256 => '{digest}' }}
   s.ios.deployment_target = '15.0'
   s.osx.deployment_target = '14.0'
+  s.tvos.deployment_target = '15.0'
+  s.watchos.deployment_target = '10.0'
   s.swift_versions = ['5.9']
   s.vendored_frameworks = 'LookInsideServer.xcframework'
   # The server starts from its load hooks even when the app references no symbols.
@@ -220,18 +203,19 @@ def build(config):
     )
     run("ditto", "-x", "-k", str(archive), str(unpacked))
     framework = unpacked / "LookInsideServer.xcframework"
-    info_path = framework / "Info.plist"
-    info = plistlib.loads(info_path.read_bytes())
-    require(info["AvailableLibraries"], "Empty XCFramework")
-    libraries = prune_unsupported_libraries(framework, info["AvailableLibraries"])
-    info["AvailableLibraries"] = libraries
-    info_path.write_bytes(plistlib.dumps(info))
+    info = plistlib.loads((framework / "Info.plist").read_bytes())
+    libraries = info["AvailableLibraries"]
+    require(libraries, "Empty XCFramework")
     report = {**metadata, "root_sha256": sha256(root), "libraries": []}
     seen = set()
     for library in libraries:
         identifier = library["LibraryIdentifier"]
         require(identifier not in seen, "Duplicate library identifier")
         seen.add(identifier)
+        require(
+            library["SupportedPlatform"] in SUPPORTED_PLATFORMS,
+            "Unsupported platform",
+        )
         bundle = (framework / identifier / library["LibraryPath"]).resolve()
         require(
             bundle.is_relative_to(framework.resolve()), "Framework path escapes archive"
@@ -275,8 +259,7 @@ def build(config):
     (BUILD / "release-notes.md").write_text(
         f"Upstream: [{metadata['upstream_tag']}]({metadata['upstream_url']})\n\n"
         f"Special test CA SHA-256: `{sha256(root)}`\n\n"
-        "All included iOS and macOS slices patched and ad-hoc signed. "
-        "No CA private key included. "
+        "All supplied slices patched and ad-hoc signed. No CA private key included. "
         "Original signature identity is not preserved. Use only in test projects.\n\n"
         "```ruby\n"
         "pod 'LookInsideServer', :podspec => "

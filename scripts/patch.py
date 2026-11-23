@@ -18,7 +18,19 @@ def sha256(data):
 
 
 def slices(data):
-    require(data[:4] == bytes.fromhex("cafebabe"), "Unsupported Mach-O fat format")
+    architectures = {
+        (0x100000C, 0): "arm64",
+        (0x100000C, 2): "arm64e",
+        (0x200000C, 1): "arm64_32",
+        (0x1000007, 3): "x86_64",
+    }
+    if data[:4] in {bytes.fromhex("cffaedfe"), bytes.fromhex("cefaedfe")}:
+        require(len(data) >= 32, "Invalid slice bounds")
+        cpu, subtype = struct.unpack_from("<II", data, 4)
+        arch = architectures.get((cpu, subtype & 0xFFFFFF))
+        require(arch is not None, "Unsupported architecture")
+        return [(arch, 0, len(data))]
+    require(data[:4] == bytes.fromhex("cafebabe"), "Unsupported Mach-O format")
     count = struct.unpack_from(">I", data, 4)[0]
     require(0 < count <= 16, "Invalid slice count")
     result = []
@@ -26,11 +38,7 @@ def slices(data):
         cpu, subtype, offset, size, _ = struct.unpack_from(
             ">IIIII", data, 8 + index * 20
         )
-        arch = {
-            (0x100000C, 0): "arm64",
-            (0x100000C, 2): "arm64e",
-            (0x1000007, 3): "x86_64",
-        }.get((cpu, subtype & 0xFFFFFF))
+        arch = architectures.get((cpu, subtype & 0xFFFFFF))
         require(arch is not None, "Unsupported architecture")
         require(
             offset >= 8 + count * 20 and size >= 32 and offset + size <= len(data),
@@ -49,22 +57,26 @@ def slices(data):
 
 
 def file_offset(image, address, length):
-    require(
-        image[:4] == bytes.fromhex("cffaedfe"), "Expected 64-bit little-endian Mach-O"
-    )
+    layout = {
+        bytes.fromhex("cffaedfe"): (32, 0x19, 72, "<QQQQ"),
+        bytes.fromhex("cefaedfe"): (28, 0x1, 56, "<IIII"),
+    }.get(image[:4])
+    require(layout is not None, "Expected little-endian Mach-O")
+    header_size, segment_command, segment_size, segment_format = layout
     count, commands_size = struct.unpack_from("<II", image, 16)
-    require(32 + commands_size <= len(image), "Truncated load commands")
-    cursor = 32
+    require(header_size + commands_size <= len(image), "Truncated load commands")
+    cursor = header_size
     for _ in range(count):
-        require(cursor + 8 <= 32 + commands_size, "Truncated load command")
+        require(cursor + 8 <= header_size + commands_size, "Truncated load command")
         command, size = struct.unpack_from("<II", image, cursor)
         require(
-            size >= 8 and cursor + size <= 32 + commands_size, "Invalid load command"
+            size >= 8 and cursor + size <= header_size + commands_size,
+            "Invalid load command",
         )
-        if command == 0x19:
-            require(size >= 72, "Truncated segment")
+        if command == segment_command:
+            require(size >= segment_size, "Truncated segment")
             vmaddr, _, offset, file_size = struct.unpack_from(
-                "<QQQQ", image, cursor + 24
+                segment_format, image, cursor + 24
             )
             if vmaddr <= address and address + length <= vmaddr + file_size:
                 mapped = offset + address - vmaddr
@@ -76,7 +88,7 @@ def file_offset(image, address, length):
 
 def symbol_offsets(binary, arch, image):
     output = subprocess.check_output(
-        ["xcrun", "nm", "-arch", arch, "-n", str(binary)], text=True
+        ["xcrun", "nm", "-g", "-arch", arch, "-n", str(binary)], text=True
     )
     values = {}
     for line in output.splitlines():
